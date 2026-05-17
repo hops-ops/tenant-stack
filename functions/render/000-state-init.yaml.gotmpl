@@ -1,0 +1,73 @@
+# code: language=yaml
+#
+# Initialize $state with spec defaults
+#
+
+{{- $xr := getCompositeResource . }}
+{{- $spec := $xr.spec | default dict }}
+{{- $metadata := $xr.metadata | default dict }}
+
+# ==============================================================================
+# Core defaults
+# ==============================================================================
+{{- $name := $metadata.name | default "tenant" }}
+{{- $clusterName := $spec.clusterName | default $name }}
+{{- $managementPolicies := $spec.managementPolicies | default (list "*") }}
+
+# Labels — every composed resource carries hops.ops.com.ai/managed=true and a
+# kind-scoped marker. User-provided labels merge on top.
+{{- $kindKey := printf "hops.ops.com.ai/%s" (lower $xr.kind) }}
+{{- $defaultLabels := dict
+  "hops.ops.com.ai/managed" "true"
+  $kindKey $name
+}}
+{{- $labels := mergeOverwrite (dict) $defaultLabels ($spec.labels | default dict) }}
+
+# ==============================================================================
+# Provider config refs (both default to clusterName)
+# ==============================================================================
+{{- $helmPCR := $spec.helmProviderConfigRef | default dict }}
+{{- $helmPCR = dict
+  "name" ($helmPCR.name | default $clusterName)
+  "kind" ($helmPCR.kind | default "ProviderConfig")
+}}
+
+{{- $k8sPCR := $spec.kubernetesProviderConfigRef | default dict }}
+{{- $k8sPCR = dict
+  "name" ($k8sPCR.name | default $clusterName)
+  "kind" ($k8sPCR.kind | default "ProviderConfig")
+}}
+
+# ==============================================================================
+# Capsule component
+# ==============================================================================
+{{- $cp := $spec.capsule | default dict }}
+{{- $cpEnabled := true }}
+{{- if hasKey $cp "enabled" }}
+  {{- $cpEnabled = $cp.enabled }}
+{{- end }}
+{{- $cpNamespace := $cp.namespace | default "capsule-system" }}
+{{- $cpReleaseName := $cp.releaseName | default "capsule" }}
+{{- $cpChartVersion := $cp.chartVersion | default "0.12.4" }}
+
+# ==============================================================================
+# Initialize $state
+# ==============================================================================
+{{- $state := dict
+  "name" $name
+  "clusterName" $clusterName
+  "managementPolicies" $managementPolicies
+  "labels" $labels
+  "helmProviderConfigRef" $helmPCR
+  "kubernetesProviderConfigRef" $k8sPCR
+  "capsule" (dict
+    "enabled" $cpEnabled
+    "namespace" $cpNamespace
+    "releaseName" $cpReleaseName
+    "chartVersion" $cpChartVersion
+    "values" ($cp.values | default dict)
+    "overrideAllValues" ($cp.overrideAllValues | default dict)
+  )
+  "observed" (dict)
+  "status" (dict)
+}}

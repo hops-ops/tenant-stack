@@ -1,0 +1,13 @@
+apiVersion: hops.ops.com.ai/v1alpha1
+kind: TenantStack
+metadata:
+  name: tenant
+  namespace: pat-local
+spec:
+  clusterName: pat-local
+  labels:
+    team: platform
+    environment: dev
+  capsule:
+    namespace: capsule-system
+    chartVersion: "0.12.4"

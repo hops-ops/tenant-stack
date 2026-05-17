@@ -1,0 +1,36 @@
+# code: language=yaml
+#
+# Ensure namespace exists for the Capsule release.
+#
+# The Helm provider can implicitly create release namespaces, but composing
+# them as Object MRs gives us explicit ownership, labels propagation, and a
+# stable readiness signal we can gate on.
+#
+
+{{- $k8sPCR := $state.kubernetesProviderConfigRef }}
+
+# ==============================================================================
+# Namespace: capsule
+# ==============================================================================
+{{- if $state.capsule.enabled }}
+---
+apiVersion: kubernetes.m.crossplane.io/v1alpha1
+kind: Object
+metadata:
+  name: namespace-capsule
+  annotations:
+    {{ setResourceNameAnnotation "namespace-capsule" }}
+  labels: {{ $state.labels | toJson }}
+spec:
+  managementPolicies: {{ $state.managementPolicies | toJson }}
+  forProvider:
+    manifest:
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: {{ $state.capsule.namespace }}
+        labels: {{ $state.labels | toJson }}
+  providerConfigRef:
+    name: {{ $k8sPCR.name }}
+    kind: {{ $k8sPCR.kind }}
+{{- end }}

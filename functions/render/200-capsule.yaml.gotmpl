@@ -1,0 +1,67 @@
+# code: language=yaml
+#
+# Helm Release: capsule
+#
+# Chart:    https://projectcapsule.github.io/charts (chart name: capsule)
+# Upstream: https://github.com/projectcapsule/capsule
+#
+# Pinned default: chart 0.12.4 / app v0.12.4 — the spec minimum (≥ v0.12.x for
+# the webhook refactor that closed the CVE-2024-39690 / CVE-2025-55205 namespace
+# label injection CVE class). Override via spec.capsule.chartVersion.
+#
+# First-pass scope: install the controller only.
+#   - `proxy.enabled: false` — the upstream chart bundles `capsule-proxy` as an
+#     optional dependency; we keep it off here. Proxy install lands in its own
+#     iteration once Zitadel OIDC wiring is in place.
+#   - `serviceMonitor.enabled: false` — ObserveStack integration is a separate
+#     iteration.
+#   - Default RBAC + Kyverno hardening for the Capsule CVE class is tracked in
+#     tasks/tenant-stack-cve-hardening (not part of this stack yet).
+#
+# wait: true — Capsule's controller is a small Deployment that reaches Ready
+# quickly. We want a stable Ready signal so downstream Tenant XRs (future) can
+# gate on observed CRD Established status per the composition-internal gating
+# convention (feedback_crossplane_composition_gates).
+#
+
+{{- $cp := $state.capsule }}
+{{- if $cp.enabled }}
+---
+apiVersion: helm.m.crossplane.io/v1beta1
+kind: Release
+metadata:
+  name: {{ $cp.releaseName }}
+  annotations:
+    {{ setResourceNameAnnotation "capsule" }}
+  labels: {{ $state.labels | toJson }}
+spec:
+  managementPolicies: {{ $state.managementPolicies | toJson }}
+  forProvider:
+    chart:
+      name: capsule
+      repository: https://projectcapsule.github.io/charts
+      version: {{ $cp.chartVersion | quote }}
+    namespace: {{ $cp.namespace }}
+    wait: true
+    {{- if gt (len $cp.overrideAllValues) 0 }}
+    values:
+      {{- toYaml $cp.overrideAllValues | nindent 6 }}
+    {{- else }}
+    values:
+      # The upstream capsule chart bundles capsule-proxy under `proxy.enabled`.
+      # Keep it OFF here — proxy install is its own iteration once OIDC wiring
+      # is in place.
+      proxy:
+        enabled: false
+      serviceMonitor:
+        # Off until ObserveStack integration lands.
+        enabled: false
+      {{- if gt (len $cp.values) 0 }}
+      {{- toYaml $cp.values | nindent 6 }}
+      {{- end }}
+    {{- end }}
+  rollbackLimit: 3
+  providerConfigRef:
+    name: {{ $state.helmProviderConfigRef.name }}
+    kind: {{ $state.helmProviderConfigRef.kind }}
+{{- end }}

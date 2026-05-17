@@ -1,0 +1,40 @@
+# code: language=yaml
+#
+# Extract observed-resource readiness for each composed resource.
+# Overall status.ready is left for function-auto-ready to compute from all
+# composed resources; this just surfaces per-component readiness on $state.status
+# so we can write it out in 999-status.
+#
+
+{{- $observed := $.observed.resources | default dict }}
+
+{{- $checkReady := dict }}
+{{- range $key := list "capsule" "namespace-capsule" }}
+  {{- $entry := get $observed $key | default dict }}
+  {{- $resource := $entry.resource | default dict }}
+  {{- $status := $resource.status | default dict }}
+  {{- $ready := false }}
+  {{- range ($status.conditions | default list) }}
+    {{- if and (eq .type "Ready") (eq .status "True") }}
+      {{- $ready = true }}
+    {{- end }}
+  {{- end }}
+  {{- $checkReady = set $checkReady $key $ready }}
+{{- end }}
+
+{{- $state = set $state "observed" (dict
+  "capsule" (dict "ready" (get $checkReady "capsule"))
+  "namespaceCapsule" (dict "ready" (get $checkReady "namespace-capsule"))
+) }}
+
+# Overall ready: every enabled component must be Ready. Mirrors the typed
+# Ready condition that function-auto-ready computes from composed resources.
+{{- $overallReady := true }}
+{{- if $state.capsule.enabled }}
+  {{- if not (get $checkReady "capsule") }}{{- $overallReady = false }}{{- end }}
+{{- end }}
+
+{{- $state = set $state "status" (dict
+  "ready" $overallReady
+  "capsule" (dict "ready" (get $checkReady "capsule"))
+) }}

@@ -1,0 +1,7 @@
+apiVersion: hops.ops.com.ai/v1alpha1
+kind: TenantStack
+metadata:
+  name: tenant
+  namespace: default
+spec:
+  clusterName: default
