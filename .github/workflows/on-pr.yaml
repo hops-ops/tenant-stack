@@ -31,7 +31,8 @@ jobs:
       examples: |
         [
           { "example": "examples/tenantstacks/minimal.yaml" },
-          { "example": "examples/tenantstacks/standard.yaml" }
+          { "example": "examples/tenantstacks/standard.yaml" },
+          { "example": "examples/tenantstacks/with-auth.yaml" }
         ]
       api_path: apis/tenantstacks
       error_on_missing_schemas: true
