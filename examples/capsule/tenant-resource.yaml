@@ -1,0 +1,95 @@
+# TenantResource is the modern, supported replacement for the deprecated
+# `Tenant.spec.networkPolicies` field. It REPLICATES Kubernetes resources
+# into every namespace owned by a matched Tenant, on every reconcile, so
+# tenant namespaces stay in lockstep with a platform-authored template.
+#
+# This example: ship a default-deny-cross-tenant NetworkPolicy into every
+# namespace owned by acme-corp. The policy allows pods in acme-corp's own
+# namespaces to talk to each other, allows them to talk to kube-system
+# (DNS), and denies everything else. Tenants may layer their own
+# more-permissive NetworkPolicies on top — Kubernetes evaluates the union.
+#
+# Authored once, propagated everywhere via the namespaceSelector below.
+# This is also the right place to ship per-tenant LimitRanges,
+# ImagePullSecrets, baseline ConfigMaps, etc.
+#
+# Useful variants:
+#   - GlobalTenantResource (cluster-scoped) — propagates into matching
+#     namespaces across ALL tenants. Better fit for cluster-wide hygiene.
+#   - Tighter selectors via `resyncPeriod` for change-cadence tuning.
+apiVersion: capsule.clastix.io/v1beta2
+kind: TenantResource
+metadata:
+  name: acme-corp-default-deny
+  # TenantResource is namespaced — must live in a namespace owned by the
+  # Tenant it targets, OR in a Tenant-controller-watched namespace. In
+  # practice, drop these in the first namespace the tenant creates (e.g.
+  # `acme-corp-prod`) or in a dedicated `acme-corp-platform` namespace.
+  namespace: acme-corp-prod
+spec:
+  # Reconciliation cadence. Default 60s; tune up for stable templates.
+  resyncPeriod: "60s"
+
+  # Which Tenant's namespaces to propagate into. The label selector runs
+  # against namespace labels — Capsule adds `capsule.clastix.io/tenant`
+  # automatically, so this is the canonical handle.
+  resources:
+    - namespaceSelector:
+        matchLabels:
+          capsule.clastix.io/tenant: acme-corp
+
+      # The raw resources to clone into every matching namespace. They are
+      # rendered with `kubectl apply` semantics (server-side apply with
+      # Capsule as the field manager), so subsequent edits in tenant
+      # namespaces will be reverted on the next resyncPeriod tick.
+      rawItems:
+        - apiVersion: networking.k8s.io/v1
+          kind: NetworkPolicy
+          metadata:
+            name: default-deny-cross-tenant
+          spec:
+            podSelector: {}
+            policyTypes: ["Ingress", "Egress"]
+            ingress:
+              # Allow traffic from any other namespace belonging to the
+              # SAME tenant. Cross-tenant pod-to-pod traffic is denied.
+              - from:
+                  - namespaceSelector:
+                      matchLabels:
+                        capsule.clastix.io/tenant: acme-corp
+            egress:
+              # Same intra-tenant allow on egress.
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        capsule.clastix.io/tenant: acme-corp
+              # Allow DNS to kube-dns/coredns in kube-system. Without this
+              # any tenant pod that does a DNS lookup hangs.
+              - to:
+                  - namespaceSelector:
+                      matchLabels:
+                        kubernetes.io/metadata.name: kube-system
+                ports:
+                  - protocol: UDP
+                    port: 53
+                  - protocol: TCP
+                    port: 53
+
+        # Sensible LimitRange baseline so tenant pods can't ship without
+        # resources set. Tenants may set lower limits but not exceed these.
+        - apiVersion: v1
+          kind: LimitRange
+          metadata:
+            name: default-pod-limits
+          spec:
+            limits:
+              - type: Container
+                default:
+                  cpu: "500m"
+                  memory: "512Mi"
+                defaultRequest:
+                  cpu: "100m"
+                  memory: "128Mi"
+                max:
+                  cpu: "4"
+                  memory: "8Gi"

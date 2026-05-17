@@ -1,0 +1,129 @@
+# A realistic Tenant CR. Onboards "acme-corp" with quotas, namespace
+# count cap, an allow-listed image registry, and Istio as the only
+# permitted Ingress class.
+#
+# After apply:
+#   - The group "acme-corp@oidc" can create namespaces in this Tenant.
+#   - Capsule's mutating webhook stamps `capsule.clastix.io/tenant=acme-corp`
+#     and an ownerRef pointing at this Tenant on every namespace they create.
+#   - The aggregated ResourceQuota is enforced ACROSS all of acme-corp's
+#     namespaces, not per-namespace — tenants cannot cheat by sharding.
+#
+# Required upstream state: kube-apiserver must be running with
+# --oidc-issuer-url / --oidc-groups-claim configured to emit a `groups`
+# claim that contains the value "acme-corp@oidc" for users in this tenant.
+# In the hops-ops design that group is the Zitadel org name; see
+# tasks/auth-stack in the KB.
+apiVersion: capsule.clastix.io/v1beta2
+kind: Tenant
+metadata:
+  name: acme-corp
+spec:
+  # Identities that own this tenant. Owners may create namespaces in the
+  # tenant, manage RBAC subjects within those namespaces, and so on.
+  # Capsule installs `additionalRoleBindings` to grant tenant-scoped RBAC
+  # to these subjects.
+  owners:
+    - kind: Group
+      name: "acme-corp@oidc"
+    - kind: User
+      name: "alice@acme-corp.example.com"
+      # An optional ClusterRole the owner gets in their own namespaces.
+      # Defaults to `admin` (full ns-scope), which is usually what you want.
+      # clusterRoles: ["admin"]
+
+  # Cap the number of namespaces this tenant may own. Tenants cannot create
+  # a 6th namespace once they hit this. The ResourceQuota below is the
+  # real cost cap; namespace count is mostly a sanity bound.
+  namespaceOptions:
+    quota: 5
+    # Labels/annotations forbidden on tenant-owned namespaces (defense in
+    # depth — keeps tenants from setting `pod-security.kubernetes.io/enforce`
+    # to weaker values once your Kyverno baseline catches up).
+    forbiddenLabels:
+      denied:
+        - "pod-security.kubernetes.io/enforce"
+        - "pod-security.kubernetes.io/audit"
+        - "pod-security.kubernetes.io/warn"
+      deniedRegex: ""
+    # Labels Capsule MUST stamp on every tenant-owned namespace. The
+    # `capsule.clastix.io/tenant` label is added automatically; this adds
+    # extras used by observability / billing.
+    additionalMetadata:
+      labels:
+        cost-center: "acme-corp"
+        observability.hops.ops.com.ai/tenant: "acme-corp"
+
+  # Aggregated ResourceQuotas. `scope: Tenant` (the default) means the
+  # `hard` values are summed across all of acme-corp's namespaces. This is
+  # the multi-tenancy invariant Capsule adds on top of plain K8s
+  # ResourceQuota (which is namespace-scoped).
+  resourceQuotas:
+    scope: Tenant
+    items:
+      - hard:
+          requests.cpu: "20"
+          requests.memory: "64Gi"
+          limits.cpu: "40"
+          limits.memory: "128Gi"
+          pods: "200"
+          persistentvolumeclaims: "20"
+          requests.storage: "200Gi"
+          services.loadbalancers: "2"
+
+  # Allow-list of container image registries. Tenants pushing a Pod whose
+  # image origin is not in this list get rejected at admission. Pair this
+  # with cosign / Kyverno ImageValidatingPolicy for actual signature
+  # enforcement (separate iteration — see security-stack supply-chain
+  # hardening tasks).
+  containerRegistries:
+    allowed:
+      - "ghcr.io/acme-corp"
+      - "registry.acme-corp.example.com"
+    allowedRegex: "^ghcr\\.io/acme-corp/.*$"
+
+  # Ingress class allow-list. Tenants may only set
+  # `spec.ingressClassName: istio` on Ingress/HTTPRoute. Prevents a tenant
+  # from sneaking in a custom controller that bypasses the mesh's
+  # AuthorizationPolicy.
+  ingressOptions:
+    allowedClasses:
+      allowed: ["istio"]
+      default: "istio"
+    # Refuse `*.example.com` hostnames — every Ingress must be a specific
+    # FQDN. Hardens against tenant accidentally absorbing all platform
+    # traffic.
+    allowWildcardHostnames: false
+
+  # Same idea for Gateway API.
+  gatewayOptions:
+    allowedClasses:
+      allowed: ["istio"]
+      default: "istio"
+
+  # StorageClasses the tenant may reference in PVCs. Each StorageClass
+  # listed must already exist in the cluster (`kubectl get sc`).
+  storageClasses:
+    allowed: ["gp3", "loki-storage"]
+    default: "gp3"
+
+  # Image pull policy enforcement. With `Always`, Capsule stops tenants
+  # from pinning `imagePullPolicy: Never` (which would let a tenant run an
+  # image they had baked into a node).
+  imagePullPolicies: ["Always", "IfNotPresent"]
+
+  # PriorityClasses the tenant may set on a Pod. Blocking
+  # `system-cluster-critical` / `system-node-critical` is the important
+  # one — those are reserved for kube-system.
+  priorityClasses:
+    allowed: ["normal", "high"]
+    default: "normal"
+
+  # Defense-in-depth: cordon: true would freeze tenant create/update/delete
+  # without affecting running workloads. Useful as a graceful "suspended"
+  # state (see lifecycle states section of specs/tenant-stack in the KB).
+  cordoned: false
+
+  # Defense-in-depth: preventDeletion: true makes `kubectl delete tenant`
+  # fail until cleared. Set per-tenant for production accounts.
+  preventDeletion: false

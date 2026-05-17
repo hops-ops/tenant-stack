@@ -1,0 +1,55 @@
+# CapsuleConfiguration is cluster-scoped, single-instance (name: default).
+# The Capsule Helm chart creates this object; the example below shows the
+# fields you typically want to override AFTER install. Apply with
+# `kubectl apply -f capsule-configuration.yaml` or edit in place with
+# `kubectl edit capsuleconfiguration default`.
+#
+# These settings are the admission boundary — changing them affects every
+# Tenant on the cluster. Treat like a kube-apiserver flag.
+apiVersion: capsule.clastix.io/v1beta2
+kind: CapsuleConfiguration
+metadata:
+  name: default
+spec:
+  # OIDC group claims that mark a request as coming from a tenant user.
+  # Anything not in this list is treated as a platform principal and
+  # bypasses tenant validation. Wire this to whatever group claim your IdP
+  # emits (in hops-ops this is the Zitadel org claim — see
+  # specs/auth-stack-zitadel in the KB).
+  userGroups:
+    - "tenants.hops.ops.com.ai"
+
+  # Individual user names that should also be treated as tenant users
+  # (typically a break-glass admin SA used for automation). Leave empty in
+  # production.
+  userNames: []
+
+  # If true, every namespace a tenant creates MUST be named
+  # `<tenant>-<suffix>`. Useful for cost attribution and visual scanning,
+  # but couples tenant naming to namespace naming forever. Default off.
+  forceTenantPrefix: false
+
+  # Regex of namespaces the platform owns. Capsule's namespace webhook
+  # refuses to bind these to any Tenant — protects against tenant takeover
+  # of platform namespaces. Update this when adding new platform stacks.
+  protectedNamespaceRegex: "^(kube-|capsule-|crossplane|pat-local|tenant|policy|security|observe|argocd|istio-|knative-|cert-manager|external-secrets|trivy-system|falco).*"
+
+  # Capsule's TLS reconciler renews the webhook server certificate. Leave
+  # true unless you're managing webhook certs out-of-band (cert-manager).
+  enableTLSReconciler: true
+
+  # Tenants cannot label or annotate Nodes with these keys. Stops a tenant
+  # from tainting Nodes or setting privileged labels.
+  nodeMetadata:
+    forbiddenLabels:
+      denied:
+        - "topology.kubernetes.io/zone"
+        - "node-role.kubernetes.io/control-plane"
+      deniedRegex: "^node-role\\.kubernetes\\.io/.*$"
+    forbiddenAnnotations:
+      denied: []
+      deniedRegex: ""
+
+  # Allow a ServiceAccount in a tenant namespace to be promoted to a tenant
+  # owner. Useful for CI bots running inside the tenant. Off by default.
+  allowServiceAccountPromotion: false

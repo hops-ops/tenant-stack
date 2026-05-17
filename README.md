@@ -89,6 +89,31 @@ spec:
   that off here and reserve proxy install for its own iteration once Zitadel
   OIDC integration is in place.
 
+## Using Capsule after the stack is installed
+
+Once the TenantStack is Ready, the cluster has Capsule's `Tenant`,
+`CapsuleConfiguration`, `TenantResource` and related CRDs Established.
+End-user examples for those resources live under
+[`examples/capsule/`](./examples/capsule/) — apply them with `kubectl apply
+-f` directly; they are **not** rendered by this stack's Composition.
+
+Typical onboarding sequence:
+
+1. Patch the cluster-scoped `CapsuleConfiguration` `default` to point at
+   your OIDC group claim and protect platform namespaces — see
+   [`examples/capsule/capsule-configuration.yaml`](./examples/capsule/capsule-configuration.yaml).
+2. Create a `Tenant` per onboarded customer / team — see
+   [`examples/capsule/tenant.yaml`](./examples/capsule/tenant.yaml) for a
+   realistic example with owners, aggregated quotas, namespace count cap,
+   registry allow-list, Ingress/Storage class restriction.
+3. Replicate baseline hygiene (default-deny NetworkPolicy, LimitRange,
+   etc.) into all of that Tenant's namespaces via `TenantResource` — see
+   [`examples/capsule/tenant-resource.yaml`](./examples/capsule/tenant-resource.yaml).
+
+The [`examples/capsule/README.md`](./examples/capsule/README.md) covers
+order of operations, the CVE-class caveat, and the deprecated
+`Tenant.spec.networkPolicies` migration to `TenantResource`.
+
 ## CVE class notice
 
 Capsule has had **two** namespace-label-injection CVEs (CVE-2024-39690,
