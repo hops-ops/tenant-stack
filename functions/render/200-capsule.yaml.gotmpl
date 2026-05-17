@@ -56,6 +56,22 @@ spec:
       serviceMonitor:
         # Off until ObserveStack integration lands.
         enabled: false
+      manager:
+        # Without explicit requests the manager Pod lands in QoS=BestEffort
+        # and gets starved on busy nodes; the chart's default 1s liveness
+        # probe then times out and the controller CrashLoops. Ship Burstable
+        # QoS with headroom, and a friendlier probe timeout.
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          timeoutSeconds: 5
+        readinessProbe:
+          timeoutSeconds: 5
       {{- if gt (len $cp.values) 0 }}
       {{- toYaml $cp.values | nindent 6 }}
       {{- end }}
