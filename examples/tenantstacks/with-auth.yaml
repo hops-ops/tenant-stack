@@ -1,0 +1,29 @@
+apiVersion: hops.ops.com.ai/v1alpha1
+kind: TenantStack
+metadata:
+  name: tenant
+  namespace: pat-local
+spec:
+  clusterName: pat-local
+  labels:
+    team: platform
+  capsule:
+    namespace: capsule-system
+    chartVersion: "0.12.4"
+    proxy:
+      enabled: true
+      usernameClaim: preferred_username
+  auth:
+    enabled: true
+    # Copy from AuthStack status.oidc.issuerURL — surfaced in TenantStack
+    # status for tenant kubeconfig snippets. Does NOT directly drive the
+    # ProviderConfig (the PC reads creds from the pre-bootstrapped Secret).
+    issuerURL: https://auth.ops.com.ai
+    # Pre-existing Zitadel Project ID (capture from the Zitadel UI or via
+    # `curl POST $issuerURL/management/v1/projects` with the iam-admin PAT).
+    zitadelProjectId: "316732890294485506"
+    oidcClient:
+      name: capsule-proxy
+      redirectUris:
+        - http://localhost:8000
+        - http://localhost:18000

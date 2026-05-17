@@ -1,0 +1,33 @@
+# code: language=yaml
+#
+# Zitadel ProviderConfig (namespaced) — consumes the credentials Secret
+# the ExternalSecret in 110-* materializes. Used by the Oidc Application
+# MR in 300-* to talk to Zitadel.
+#
+# Renders only when spec.auth.enabled. Sits in the XR's namespace; the
+# Oidc MR in the same namespace references it by name.
+#
+# Reference: xrs/stacks/k8s/auth/examples/consumer-providerconfig.yaml.
+# Naming pinned to "zitadel-tenant-stack" rather than the AuthStack
+# example's bare "zitadel" so a single cluster running multiple
+# auth-consumer XRs doesn't collide on PC name.
+#
+
+{{- $a := $state.auth }}
+{{- if $a.enabled }}
+---
+apiVersion: zitadel.m.crossplane.io/v1beta1
+kind: ProviderConfig
+metadata:
+  name: zitadel-tenant-stack
+  annotations:
+    {{ setResourceNameAnnotation "zitadel-provider-config" }}
+  labels: {{ $state.labels | toJson }}
+spec:
+  credentials:
+    source: Secret
+    secretRef:
+      name: zitadel-credentials
+      namespace: {{ $state.namespace }}
+      key: credentials
+{{- end }}

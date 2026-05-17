@@ -1,0 +1,79 @@
+# code: language=yaml
+#
+# Zitadel OIDC Application MR for tenant kubectl users
+# (`kubectl oidc-login get-token --oidc-client-id=...`).
+#
+# capsule-proxy itself does NOT consume this — the proxy is JWT-agnostic
+# and just extracts claims to filter list/watch responses. This Application
+# is the OIDC client that tenant kubectl users authenticate against; the
+# resulting JWT is what they put in `Authorization: Bearer` against
+# capsule-proxy.
+#
+# Auth flow: OIDC_GRANT_TYPE_AUTHORIZATION_CODE + PKCE → no client_secret
+# required at runtime, but the Zitadel App is still issued one (in case
+# you also want backend confidential-client flows). We default to
+# OIDC_AUTH_METHOD_TYPE_NONE so kubectl-oidc-login + PKCE works without
+# the user ever needing to handle the secret. Override via
+# spec.auth.oidcClient passthrough if you need confidential client.
+#
+# writeConnectionSecretToRef → the resulting K8s Secret is keyed
+# {client_id, client_secret}. Tenants pull client_id out for their
+# kubeconfig (`kubectl get secret ... -o jsonpath='{.data.client_id}' | base64 -d`).
+#
+# projectId is provided by the user via spec.auth.zitadelProjectId — we
+# don't compose Zitadel Projects here (that's an admin concern and lives
+# upstream of TenantStack).
+#
+
+{{- $a := $state.auth }}
+{{- if $a.enabled }}
+---
+apiVersion: application.zitadel.m.crossplane.io/v1alpha1
+kind: Oidc
+metadata:
+  name: {{ $a.oidcClient.name }}
+  annotations:
+    {{ setResourceNameAnnotation "zitadel-oidc-app" }}
+  labels: {{ $state.labels | toJson }}
+spec:
+  managementPolicies: {{ $state.managementPolicies | toJson }}
+  forProvider:
+    name: {{ $a.oidcClient.name | quote }}
+    projectId: {{ $a.zitadelProjectId | quote }}
+
+    # OIDC_APP_TYPE_NATIVE is correct for CLI clients (kubectl) per the
+    # Zitadel docs (https://zitadel.com/docs/guides/integrate/login/oidc/oauth-recommended-flows).
+    appType: OIDC_APP_TYPE_NATIVE
+
+    # PKCE only — no client secret needed at runtime. Tenants can use a
+    # public client with kubectl oidc-login.
+    authMethodType: OIDC_AUTH_METHOD_TYPE_NONE
+
+    grantTypes:
+      - OIDC_GRANT_TYPE_AUTHORIZATION_CODE
+      - OIDC_GRANT_TYPE_REFRESH_TOKEN
+
+    responseTypes:
+      - OIDC_RESPONSE_TYPE_CODE
+
+    redirectUris: {{ $a.oidcClient.redirectUris | toJson }}
+    {{- if gt (len $a.oidcClient.postLogoutRedirectUris) 0 }}
+    postLogoutRedirectUris: {{ $a.oidcClient.postLogoutRedirectUris | toJson }}
+    {{- end }}
+
+    # Bake group / role claims into the access + ID token so capsule-proxy
+    # can authenticate the JWT.
+    accessTokenRoleAssertion: true
+    idTokenRoleAssertion: true
+    idTokenUserinfoAssertion: true
+
+  # Crossplane writes the issued client_id + client_secret here on first
+  # reconcile. The Secret lands in the XR's namespace; capsule-proxy
+  # does not read it (the proxy is JWT-agnostic) — emitted for tenants.
+  writeConnectionSecretToRef:
+    name: {{ $a.oidcClient.name }}-oidc-client
+
+  providerConfigRef:
+    name: zitadel-tenant-stack
+    kind: ProviderConfig
+{{- end }}

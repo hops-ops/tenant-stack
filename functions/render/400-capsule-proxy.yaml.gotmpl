@@ -1,0 +1,83 @@
+# code: language=yaml
+#
+# Helm Release: capsule-proxy
+#
+# Chart:    oci://ghcr.io/projectcapsule/charts/capsule-proxy
+# Upstream: https://github.com/projectcapsule/capsule-proxy
+# Docs:     https://projectcapsule.dev/docs/proxy/installation/
+#
+# capsule-proxy sits in front of the kube-apiserver for tenant kubectl
+# users. It extracts the username from the Bearer JWT claim configured by
+# `options.oidcUsernameClaim` and uses the in-cluster RoleBinding reflector
+# to know which namespaces the user owns; list/watch responses are
+# filtered to only those namespaces.
+#
+# IMPORTANT — capsule-proxy does NOT validate JWTs itself. The token must
+# be validated UPSTREAM by either:
+#   (a) the kube-apiserver's OIDC IdP association (--oidc-issuer-url +
+#       --oidc-client-id + --oidc-username-claim configured on the
+#       apiserver, or, for EKS, `aws eks associate-identity-provider-config`),
+#       OR
+#   (b) an oauth2-proxy / authenticating Ingress deployed in front of
+#       capsule-proxy that validates JWTs and passes them through.
+# Neither is composed by this stack — both are operator-managed external
+# prerequisites. See README "Auth integration" for the EKS pattern.
+#
+# Default values:
+#   - `oidcUsernameClaim`: Zitadel's `preferred_username` (override via spec).
+#   - `oidcUsernameClaim` reads from the same JWT capsule-proxy receives;
+#      it is NOT an OIDC client setting (the chart doesn't expose
+#      issuerURL / client_id / client_secret because capsule-proxy itself
+#      isn't an OAuth2 client).
+#   - `replicaCount`: 1 by default. Set ≥2 + leaderElection in
+#      `spec.capsule.proxy.values` for HA.
+#
+
+{{- $p := $state.capsule.proxy }}
+{{- if $p.enabled }}
+---
+apiVersion: helm.m.crossplane.io/v1beta1
+kind: Release
+metadata:
+  name: {{ $p.releaseName }}
+  annotations:
+    {{ setResourceNameAnnotation "capsule-proxy" }}
+  labels: {{ $state.labels | toJson }}
+spec:
+  managementPolicies: {{ $state.managementPolicies | toJson }}
+  forProvider:
+    chart:
+      name: capsule-proxy
+      # OCI ref — capsule-proxy is published as an OCI artifact under the
+      # projectcapsule org's charts repo, not the helm index.
+      repository: oci://ghcr.io/projectcapsule/charts
+      version: {{ $p.chartVersion | quote }}
+    namespace: {{ $state.capsule.namespace }}
+    wait: true
+    {{- if gt (len $p.overrideAllValues) 0 }}
+    values:
+      {{- toYaml $p.overrideAllValues | nindent 6 }}
+    {{- else }}
+    values:
+      replicaCount: {{ $p.replicas }}
+      options:
+        oidcUsernameClaim: {{ $p.usernameClaim | quote }}
+        # The default `BearerToken,TLSCertificate` accepts JWT bearer
+        # tokens (the OIDC path) AND raw mTLS client certs (the
+        # break-glass-with-kubeconfig path). Leave as upstream default.
+      resources:
+        requests:
+          cpu: 100m
+          memory: 128Mi
+        limits:
+          cpu: 500m
+          memory: 256Mi
+      {{- if gt (len $p.values) 0 }}
+      {{- toYaml $p.values | nindent 6 }}
+      {{- end }}
+    {{- end }}
+  rollbackLimit: 3
+  providerConfigRef:
+    name: {{ $state.helmProviderConfigRef.name }}
+    kind: {{ $state.helmProviderConfigRef.kind }}
+{{- end }}

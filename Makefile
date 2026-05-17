@@ -25,7 +25,8 @@ generate-configuration:
 # Format: example_path::observed_resources_path (observed_resources_path optional).
 EXAMPLES := \
     examples/tenantstacks/minimal.yaml:: \
-    examples/tenantstacks/standard.yaml::
+    examples/tenantstacks/standard.yaml:: \
+    examples/tenantstacks/with-auth.yaml::
 
 render\:all:
 	@tmpdir=$$(mktemp -d); \

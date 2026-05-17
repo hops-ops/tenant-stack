@@ -204,6 +204,114 @@ _items = [
             ]
         }
     }
+
+    # ==========================================================================
+    # Test 7: capsule.proxy.enabled renders the capsule-proxy helm Release
+    # with usernameClaim wired into chart options.
+    # ==========================================================================
+    metav1alpha1.CompositionTest {
+        metadata.name = "capsule-proxy-enabled-renders-release-with-username-claim"
+        spec = {
+            compositionPath = "apis/tenantstacks/composition.yaml"
+            xrdPath = "apis/tenantstacks/definition.yaml"
+            timeoutSeconds = 60
+            validate = False
+            xr = stacksv1alpha1.TenantStack {
+                metadata.name = "tenant"
+                spec = {
+                    clusterName = "my-cluster"
+                    capsule = {
+                        proxy = {
+                            enabled = True
+                            usernameClaim = "email"
+                            replicas = 2
+                        }
+                    }
+                }
+            }
+            assertResources = [
+                {
+                    apiVersion = "helm.m.crossplane.io/v1beta1"
+                    kind = "Release"
+                    metadata.name = "capsule-proxy"
+                    spec.forProvider = {
+                        chart = {
+                            name = "capsule-proxy"
+                            repository = "oci://ghcr.io/projectcapsule/charts"
+                            version = "0.10.0"
+                        }
+                        namespace = "capsule-system"
+                    }
+                }
+            ]
+        }
+    }
+
+    # ==========================================================================
+    # Test 8: auth.enabled composes Zitadel ProviderConfig + Oidc App MR.
+    # The credentials Secret is operator-managed (pre-bootstrapped on the
+    # Crossplane cluster) — TenantStack does not auto-compose ESO sync
+    # because Crossplane provider-kubernetes Object MRs are bound to a
+    # single ProviderConfig context (no clean cross-cluster Secret copy
+    # primitive). See README "Auth integration" for the bootstrap step.
+    # ==========================================================================
+    metav1alpha1.CompositionTest {
+        metadata.name = "auth-enabled-composes-pc-and-oidc-app"
+        spec = {
+            compositionPath = "apis/tenantstacks/composition.yaml"
+            xrdPath = "apis/tenantstacks/definition.yaml"
+            timeoutSeconds = 60
+            validate = False
+            xr = stacksv1alpha1.TenantStack {
+                metadata.name = "tenant"
+                metadata.namespace = "pat-local"
+                spec = {
+                    clusterName = "pat-local"
+                    auth = {
+                        enabled = True
+                        issuerURL = "https://auth.ops.com.ai"
+                        zitadelProjectId = "316732890294485506"
+                        oidcClient = {
+                            name = "capsule-proxy"
+                            redirectUris = ["http://localhost:8000", "http://localhost:18000"]
+                        }
+                    }
+                }
+            }
+            assertResources = [
+                {
+                    apiVersion = "zitadel.m.crossplane.io/v1beta1"
+                    kind = "ProviderConfig"
+                    metadata.name = "zitadel-tenant-stack"
+                    spec.credentials = {
+                        source = "Secret"
+                        secretRef = {
+                            name = "zitadel-credentials"
+                            namespace = "pat-local"
+                            key = "credentials"
+                        }
+                    }
+                }
+                {
+                    apiVersion = "application.zitadel.m.crossplane.io/v1alpha1"
+                    kind = "Oidc"
+                    metadata.name = "capsule-proxy"
+                    spec.forProvider = {
+                        name = "capsule-proxy"
+                        projectId = "316732890294485506"
+                        appType = "OIDC_APP_TYPE_NATIVE"
+                        authMethodType = "OIDC_AUTH_METHOD_TYPE_NONE"
+                        redirectUris = ["http://localhost:8000", "http://localhost:18000"]
+                    }
+                    spec.writeConnectionSecretToRef.name = "capsule-proxy-oidc-client"
+                    spec.providerConfigRef = {
+                        name = "zitadel-tenant-stack"
+                        kind = "ProviderConfig"
+                    }
+                }
+            ]
+        }
+    }
 ]
 
 items = _items

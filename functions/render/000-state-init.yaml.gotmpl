@@ -11,6 +11,7 @@
 # Core defaults
 # ==============================================================================
 {{- $name := $metadata.name | default "tenant" }}
+{{- $namespace := $metadata.namespace | default "default" }}
 {{- $clusterName := $spec.clusterName | default $name }}
 {{- $managementPolicies := $spec.managementPolicies | default (list "*") }}
 
@@ -39,7 +40,7 @@
 }}
 
 # ==============================================================================
-# Capsule component
+# Capsule controller component
 # ==============================================================================
 {{- $cp := $spec.capsule | default dict }}
 {{- $cpEnabled := true }}
@@ -51,10 +52,41 @@
 {{- $cpChartVersion := $cp.chartVersion | default "0.12.4" }}
 
 # ==============================================================================
+# capsule-proxy component
+# ==============================================================================
+{{- $cpProxy := $cp.proxy | default dict }}
+{{- $cpProxyEnabled := false }}
+{{- if hasKey $cpProxy "enabled" }}
+  {{- $cpProxyEnabled = $cpProxy.enabled }}
+{{- end }}
+{{- $cpProxyReleaseName := $cpProxy.releaseName | default "capsule-proxy" }}
+{{- $cpProxyChartVersion := $cpProxy.chartVersion | default "0.10.0" }}
+{{- $cpProxyUsernameClaim := $cpProxy.usernameClaim | default "preferred_username" }}
+{{- $cpProxyReplicas := $cpProxy.replicas | default 1 }}
+
+# ==============================================================================
+# Auth integration (Zitadel OIDC App composition)
+# ==============================================================================
+{{- $auth := $spec.auth | default dict }}
+{{- $authEnabled := false }}
+{{- if hasKey $auth "enabled" }}
+  {{- $authEnabled = $auth.enabled }}
+{{- end }}
+{{- $authIssuerURL := $auth.issuerURL | default "" }}
+{{- $authProjectId := $auth.zitadelProjectId | default "" }}
+{{- $authOidc := $auth.oidcClient | default dict }}
+{{- $authOidc = dict
+  "name" ($authOidc.name | default "capsule-proxy")
+  "redirectUris" ($authOidc.redirectUris | default (list "http://localhost:8000" "http://localhost:18000"))
+  "postLogoutRedirectUris" ($authOidc.postLogoutRedirectUris | default list)
+}}
+
+# ==============================================================================
 # Initialize $state
 # ==============================================================================
 {{- $state := dict
   "name" $name
+  "namespace" $namespace
   "clusterName" $clusterName
   "managementPolicies" $managementPolicies
   "labels" $labels
@@ -67,6 +99,21 @@
     "chartVersion" $cpChartVersion
     "values" ($cp.values | default dict)
     "overrideAllValues" ($cp.overrideAllValues | default dict)
+    "proxy" (dict
+      "enabled" $cpProxyEnabled
+      "releaseName" $cpProxyReleaseName
+      "chartVersion" $cpProxyChartVersion
+      "usernameClaim" $cpProxyUsernameClaim
+      "replicas" $cpProxyReplicas
+      "values" ($cpProxy.values | default dict)
+      "overrideAllValues" ($cpProxy.overrideAllValues | default dict)
+    )
+  )
+  "auth" (dict
+    "enabled" $authEnabled
+    "issuerURL" $authIssuerURL
+    "zitadelProjectId" $authProjectId
+    "oidcClient" $authOidc
   )
   "observed" (dict)
   "status" (dict)

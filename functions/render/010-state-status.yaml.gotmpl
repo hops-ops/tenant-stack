@@ -9,7 +9,7 @@
 {{- $observed := $.observed.resources | default dict }}
 
 {{- $checkReady := dict }}
-{{- range $key := list "capsule" "namespace-capsule" }}
+{{- range $key := list "capsule" "namespace-capsule" "capsule-proxy" "zitadel-oidc-app" }}
   {{- $entry := get $observed $key | default dict }}
   {{- $resource := $entry.resource | default dict }}
   {{- $status := $resource.status | default dict }}
@@ -25,6 +25,8 @@
 {{- $state = set $state "observed" (dict
   "capsule" (dict "ready" (get $checkReady "capsule"))
   "namespaceCapsule" (dict "ready" (get $checkReady "namespace-capsule"))
+  "capsuleProxy" (dict "ready" (get $checkReady "capsule-proxy"))
+  "zitadelOidcApp" (dict "ready" (get $checkReady "zitadel-oidc-app"))
 ) }}
 
 # Overall ready: every enabled component must be Ready. Mirrors the typed
@@ -33,8 +35,26 @@
 {{- if $state.capsule.enabled }}
   {{- if not (get $checkReady "capsule") }}{{- $overallReady = false }}{{- end }}
 {{- end }}
+{{- if $state.capsule.proxy.enabled }}
+  {{- if not (get $checkReady "capsule-proxy") }}{{- $overallReady = false }}{{- end }}
+{{- end }}
+{{- if $state.auth.enabled }}
+  {{- if not (get $checkReady "zitadel-oidc-app") }}{{- $overallReady = false }}{{- end }}
+{{- end }}
 
 {{- $state = set $state "status" (dict
   "ready" $overallReady
-  "capsule" (dict "ready" (get $checkReady "capsule"))
+  "capsule" (dict
+    "ready" (get $checkReady "capsule")
+    "proxy" (dict
+      "ready" (get $checkReady "capsule-proxy")
+    )
+  )
+  "auth" (dict
+    "ready" (get $checkReady "zitadel-oidc-app")
+    "oidcClientSecretRef" (dict
+      "name" (printf "%s-oidc-client" $state.auth.oidcClient.name)
+      "namespace" $state.namespace
+    )
+  )
 ) }}

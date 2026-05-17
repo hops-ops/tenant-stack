@@ -60,7 +60,7 @@ spec:
                     - ProviderConfig
                     - ClusterProviderConfig
               capsule:
-                description: Capsule controller configuration. Capsule is the standard production multi-tenancy framework for Kubernetes (Tenant CRD + admission webhook). NOTE — the upstream capsule chart bundles `capsule-proxy` as an optional subchart under `proxy.enabled`; this first pass keeps it off. Per-tenant list/watch filtering ships in a dedicated iteration once Zitadel OIDC wiring lands. CVE class hardening (RBAC + Kyverno guard) is tracked separately under tasks/tenant-stack-cve-hardening.
+                description: Capsule multi-tenancy configuration — controller + (optional) proxy. Capsule is the standard production multi-tenancy framework for Kubernetes (Tenant CRD + admission webhook). The upstream chart bundles `capsule-proxy` as an optional subchart; this XRD installs it as a separate top-level Helm Release (cleaner lifecycle, independent of the controller's chart version). CVE-class hardening (RBAC + Kyverno guard) is tracked separately under tasks/tenant-stack-cve-hardening.
                 type: object
                 properties:
                   enabled:
@@ -84,6 +84,106 @@ spec:
                     description: Helm values that replace all defaults entirely.
                     type: object
                     x-kubernetes-preserve-unknown-fields: true
+                  proxy:
+                    description: |
+                      capsule-proxy install — the per-tenant filtered list/watch
+                      proxy that sits in front of the kube-apiserver. Tenant
+                      kubectl users target the proxy URL instead of the apiserver
+                      directly; the proxy extracts identity from a Bearer JWT
+                      (via `usernameClaim`) and filters list/watch responses to
+                      only the namespaces the user is a Tenant owner of.
+                      capsule-proxy itself does NOT validate JWTs — that
+                      happens upstream (EKS apiserver OIDC IdP association OR
+                      oauth2-proxy in front of capsule-proxy). When `spec.auth.enabled`
+                      is true, a Zitadel OIDC Application is auto-provisioned
+                      for tenant kubectl users (`kubectl oidc-login`).
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether to install capsule-proxy. Defaults to false (off in the first pass; flip to true to opt in).
+                        type: boolean
+                        default: false
+                      releaseName:
+                        description: Helm release name. Defaults to "capsule-proxy".
+                        type: string
+                      chartVersion:
+                        description: capsule-proxy Helm chart version. Default 0.10.0 — the version pinned by capsule chart 0.12.4 as its subchart dependency.
+                        type: string
+                      usernameClaim:
+                        description: JWT claim capsule-proxy uses as the username. Defaults to "preferred_username" (Zitadel default). Set to "email" if your IdP emits username under that claim.
+                        type: string
+                      replicas:
+                        description: Replica count. Defaults to 1. Set ≥2 with leaderElection in values for HA.
+                        type: integer
+                        minimum: 1
+                      values:
+                        description: Helm values merged on top of the stack's defaults.
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+                      overrideAllValues:
+                        description: Helm values that replace all defaults entirely.
+                        type: object
+                        x-kubernetes-preserve-unknown-fields: true
+              auth:
+                description: |
+                  Cross-stack AuthStack integration. When `enabled: true`,
+                  TenantStack composes a Zitadel ProviderConfig + Oidc
+                  Application MR for tenant kubectl users
+                  (`kubectl oidc-login`). The resulting client_id lands in a
+                  Crossplane connection Secret tenants pull from to build
+                  their kubeconfig.
+
+                  Prerequisites:
+                  1. AuthStack must be installed and Ready (this is what
+                     publishes the OIDC issuer at spec.auth.issuerURL).
+                  2. A K8s Secret named `zitadel-credentials` must exist in
+                     the TenantStack's namespace ON THE CROSSPLANE CLUSTER
+                     (the cluster where the Zitadel provider's controllers
+                     run, not necessarily the workload cluster), containing
+                     a single key `credentials` with the provider creds JSON
+                     ({access_token, domain, port, insecure}). For the hops
+                     colima+pat-local topology run
+                     `hops auth zitadel-credentials sync` (or copy from
+                     AuthStack's iam-admin-pat Secret manually).
+                  3. The Zitadel Project under which to provision OIDC apps
+                     must already exist; capture its ID via the Zitadel
+                     management API or UI and pass via spec.auth.zitadelProjectId.
+
+                  The cross-cluster ExternalSecret auto-composition is NOT
+                  shipped — Crossplane provider-kubernetes Object MRs are
+                  bound to a single ProviderConfig context, so the ESO →
+                  workload-cluster → control-plane-cluster sync cannot be
+                  modeled as a single composition step. Tracked as a future
+                  iteration if ESO lands on the control-plane cluster.
+                type: object
+                properties:
+                  enabled:
+                    description: Whether to compose the Zitadel OIDC integration. Defaults to false.
+                    type: boolean
+                    default: false
+                  issuerURL:
+                    description: Zitadel OIDC issuer URL. Copy from AuthStack status.oidc.issuerURL. Example "https://auth.ops.com.ai". Surfaced in status for tenant kubeconfig snippets.
+                    type: string
+                  zitadelProjectId:
+                    description: Zitadel Project ID under which to provision the OIDC Application. Capture from the Zitadel UI ("Projects → <your project> → details"), or compose a Project MR out-of-band and pass its ID here. Required when auth.enabled.
+                    type: string
+                  oidcClient:
+                    description: OIDC Application shape provisioned in Zitadel for tenant kubectl users (`kubectl oidc-login`).
+                    type: object
+                    properties:
+                      name:
+                        description: Display name of the OIDC Application in Zitadel. Defaults to "capsule-proxy".
+                        type: string
+                      redirectUris:
+                        description: Allowed redirect URIs. kubectl oidc-login defaults to http://localhost:8000 and http://localhost:18000.
+                        type: array
+                        items:
+                          type: string
+                      postLogoutRedirectUris:
+                        description: Allowed post-logout redirect URIs. Optional.
+                        type: array
+                        items:
+                          type: string
             required:
             - clusterName
           status:
@@ -98,5 +198,23 @@ spec:
                 properties:
                   ready:
                     type: boolean
+                  proxy:
+                    type: object
+                    properties:
+                      ready:
+                        type: boolean
+              auth:
+                type: object
+                properties:
+                  ready:
+                    type: boolean
+                  oidcClientSecretRef:
+                    description: Reference to the K8s Secret holding the composed OIDC application's client_id (key "client_id") and client_secret (key "client_secret"). Capsule-proxy itself doesn't read these; emitted for tenant kubectl users to construct their kubeconfig (`kubectl oidc-login --oidc-client-id=$(kubectl get secret ... -o jsonpath='{.data.client_id}' | base64 -d)`).
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      namespace:
+                        type: string
         required:
         - spec

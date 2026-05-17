@@ -11,3 +11,14 @@ status:
   ready: {{ $state.status.ready }}
   capsule:
     ready: {{ $state.status.capsule.ready }}
+    {{- if $state.capsule.proxy.enabled }}
+    proxy:
+      ready: {{ $state.status.capsule.proxy.ready }}
+    {{- end }}
+  {{- if $state.auth.enabled }}
+  auth:
+    ready: {{ $state.status.auth.ready }}
+    oidcClientSecretRef:
+      name: {{ $state.status.auth.oidcClientSecretRef.name }}
+      namespace: {{ $state.status.auth.oidcClientSecretRef.namespace }}
+  {{- end }}
