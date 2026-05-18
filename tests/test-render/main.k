@@ -248,6 +248,54 @@ _items = [
     }
 
     # ==========================================================================
+    # Test 9: aws.eksIdentityProvider.enabled WITHOUT observed clientId
+    # → composition gate skips the IdP MR (correct runtime behavior:
+    # render only emits the MR once the Oidc App's connection secret is
+    # populated, per the composition-gate convention).
+    # ==========================================================================
+    metav1alpha1.CompositionTest {
+        metadata.name = "eks-idp-gated-on-oidc-client-id"
+        spec = {
+            compositionPath = "apis/tenantstacks/composition.yaml"
+            xrdPath = "apis/tenantstacks/definition.yaml"
+            timeoutSeconds = 60
+            validate = False
+            xr = stacksv1alpha1.TenantStack {
+                metadata.name = "tenant"
+                metadata.namespace = "pat-local"
+                spec = {
+                    clusterName = "pat-local"
+                    auth = {
+                        enabled = True
+                        issuerURL = "https://auth.ops.com.ai"
+                        zitadelProjectId = "316732890294485506"
+                    }
+                    aws = {
+                        region = "us-east-2"
+                        eksIdentityProvider = {
+                            enabled = True
+                            identityProviderConfigName = "zitadel"
+                        }
+                    }
+                }
+            }
+            # The Oidc App + ProviderConfig render, but the EKS IdP MR
+            # does NOT because the gate requires a non-empty observed
+            # connectionDetails["attribute.client_id"]. Asserting on
+            # Zitadel resources keeps the test small; absence of the
+            # IdentityProviderConfig is verified by it not appearing in
+            # render output.
+            assertResources = [
+                {
+                    apiVersion = "application.zitadel.m.crossplane.io/v1alpha1"
+                    kind = "Oidc"
+                    metadata.name = "capsule-proxy"
+                }
+            ]
+        }
+    }
+
+    # ==========================================================================
     # Test 8: auth.enabled composes Zitadel ProviderConfig + Oidc App MR.
     # The credentials Secret is operator-managed (pre-bootstrapped on the
     # Crossplane cluster) — TenantStack does not auto-compose ESO sync

@@ -61,6 +61,12 @@ spec:
     postLogoutRedirectUris: {{ $a.oidcClient.postLogoutRedirectUris | toJson }}
     {{- end }}
 
+    # Issue JWT access tokens (default is opaque BEARER). The JWT
+    # variant is required for the EKS apiserver to validate via its
+    # OIDC IdP association (JWKS verification) and for downstream
+    # consumers like kubectl-oidc_login.
+    accessTokenType: OIDC_TOKEN_TYPE_JWT
+
     # Bake group / role claims into the access + ID token so capsule-proxy
     # can authenticate the JWT.
     accessTokenRoleAssertion: true

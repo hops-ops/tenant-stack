@@ -110,7 +110,15 @@ spec:
                         description: capsule-proxy Helm chart version. Default 0.10.0 — the version pinned by capsule chart 0.12.4 as its subchart dependency.
                         type: string
                       usernameClaim:
-                        description: JWT claim capsule-proxy uses as the username. Defaults to "preferred_username" (Zitadel default). Set to "email" if your IdP emits username under that claim.
+                        description: |
+                          JWT claim capsule-proxy uses as the username.
+                          Defaults to "sub" — universal across grant
+                          types. Zitadel's interactive flow emits
+                          `preferred_username` (human userName); the
+                          machine-user JWT-bearer flow does not, but
+                          both emit `sub`. Use "preferred_username" if
+                          you only support human users and want
+                          human-readable usernames.
                         type: string
                       replicas:
                         description: Replica count. Defaults to 1. Set ≥2 with leaderElection in values for HA.
@@ -124,6 +132,84 @@ spec:
                         description: Helm values that replace all defaults entirely.
                         type: object
                         x-kubernetes-preserve-unknown-fields: true
+              aws:
+                description: |
+                  AWS integration. Couples this stack to AWS EKS, but stays
+                  opt-in — turn off by leaving spec.aws.eksIdentityProvider.enabled
+                  unset / false and the stack is cloud-neutral.
+
+                  When enabled, composes an EKS IdentityProviderConfig MR
+                  that wires the kube-apiserver to trust JWTs issued by the
+                  Zitadel issuer URL specified in spec.auth.issuerURL. This
+                  closes the loop for capsule-proxy — without it the
+                  apiserver rejects tenant Bearer JWTs as unauthenticated
+                  even though capsule-proxy itself processes them.
+
+                  Requires spec.auth.enabled (the Zitadel Oidc Application
+                  emits the client_id this IdP config registers); the
+                  composition gates the IdP MR rendering on the Oidc
+                  Application's connection secret being populated.
+                type: object
+                properties:
+                  region:
+                    description: AWS region of the EKS cluster. Required when eksIdentityProvider.enabled.
+                    type: string
+                  awsProviderConfigRef:
+                    description: Reference to the AWS ProviderConfig. Defaults to "default".
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      kind:
+                        type: string
+                        enum:
+                        - ProviderConfig
+                        - ClusterProviderConfig
+                  eksIdentityProvider:
+                    description: |
+                      EKS IdentityProviderConfig (`aws eks
+                      associate-identity-provider-config`). Tells the EKS
+                      apiserver to validate Bearer JWTs against the AuthStack
+                      Zitadel issuer URL, mapping JWT claims to k8s user +
+                      groups. Required for capsule-proxy to actually
+                      function end-to-end on EKS.
+                    type: object
+                    properties:
+                      enabled:
+                        description: Whether to compose the EKS IdentityProviderConfig. Defaults to false. Requires spec.auth.enabled.
+                        type: boolean
+                        default: false
+                      identityProviderConfigName:
+                        description: The name AWS gives this IdP association within the EKS cluster. Defaults to "zitadel". Each EKS cluster can host multiple IdP configs; the name must be unique within the cluster.
+                        type: string
+                      eksClusterName:
+                        description: Name of the EKS cluster to associate the IdP config with. Defaults to spec.clusterName.
+                        type: string
+                      usernameClaim:
+                        description: |
+                          JWT claim the apiserver reads as the
+                          username. Defaults to spec.capsule.proxy.usernameClaim
+                          (which defaults to "sub" — universal across
+                          Zitadel grant types). Keep the two aligned —
+                          capsule-proxy extracts identity from the JWT
+                          for list/watch filtering and the apiserver
+                          validates it via OIDC; they must agree on
+                          which claim is the username.
+                        type: string
+                      groupsClaim:
+                        description: JWT claim the apiserver reads as group membership. Defaults to "groups".
+                        type: string
+                      usernamePrefix:
+                        description: Optional prefix prepended to OIDC-issued usernames (e.g. "zitadel:"). Empty by default — usernames pass through unchanged.
+                        type: string
+                      groupsPrefix:
+                        description: Optional prefix prepended to OIDC-issued groups. Empty by default.
+                        type: string
+                      requiredClaims:
+                        description: Optional map of JWT claim → required value. AWS rejects tokens that don't satisfy every entry.
+                        type: object
+                        additionalProperties:
+                          type: string
               auth:
                 description: |
                   Cross-stack AuthStack integration. When `enabled: true`,
@@ -203,6 +289,17 @@ spec:
                     properties:
                       ready:
                         type: boolean
+              aws:
+                type: object
+                properties:
+                  eksIdentityProvider:
+                    type: object
+                    properties:
+                      ready:
+                        type: boolean
+                      identityProviderConfigName:
+                        description: Name of the IdP config as known to AWS. Mirrors spec.aws.eksIdentityProvider.identityProviderConfigName for downstream readability.
+                        type: string
               auth:
                 type: object
                 properties:

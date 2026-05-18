@@ -27,3 +27,11 @@ spec:
       redirectUris:
         - http://localhost:8000
         - http://localhost:18000
+  aws:
+    region: us-east-2
+    eksIdentityProvider:
+      enabled: true
+      identityProviderConfigName: zitadel
+      # eksClusterName defaults to spec.clusterName
+      usernameClaim: preferred_username
+      groupsClaim: groups

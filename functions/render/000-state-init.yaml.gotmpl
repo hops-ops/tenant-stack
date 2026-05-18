@@ -61,8 +61,35 @@
 {{- end }}
 {{- $cpProxyReleaseName := $cpProxy.releaseName | default "capsule-proxy" }}
 {{- $cpProxyChartVersion := $cpProxy.chartVersion | default "0.10.0" }}
-{{- $cpProxyUsernameClaim := $cpProxy.usernameClaim | default "preferred_username" }}
+{{- $cpProxyUsernameClaim := $cpProxy.usernameClaim | default "sub" }}
 {{- $cpProxyReplicas := $cpProxy.replicas | default 1 }}
+
+# ==============================================================================
+# Auth integration (Zitadel OIDC App composition)
+# ==============================================================================
+# ==============================================================================
+# AWS integration (EKS IdentityProviderConfig)
+# ==============================================================================
+{{- $aws := $spec.aws | default dict }}
+{{- $awsRegion := $aws.region | default "" }}
+{{- $awsPCR := $aws.awsProviderConfigRef | default dict }}
+{{- $awsPCR = dict
+  "name" ($awsPCR.name | default "default")
+  "kind" ($awsPCR.kind | default "ProviderConfig")
+}}
+{{- $eksIdp := $aws.eksIdentityProvider | default dict }}
+{{- $eksIdpEnabled := false }}
+{{- if hasKey $eksIdp "enabled" }}
+  {{- $eksIdpEnabled = $eksIdp.enabled }}
+{{- end }}
+{{- $eksIdpName := $eksIdp.identityProviderConfigName | default "zitadel" }}
+{{- $eksIdpClusterName := $eksIdp.eksClusterName | default $clusterName }}
+{{- $eksIdpUsernameClaim := $eksIdp.usernameClaim | default $cpProxyUsernameClaim }}
+{{- /* Default both to "sub" via $cpProxyUsernameClaim already; keep them aligned. */}}
+{{- $eksIdpGroupsClaim := $eksIdp.groupsClaim | default "groups" }}
+{{- $eksIdpUsernamePrefix := $eksIdp.usernamePrefix | default "" }}
+{{- $eksIdpGroupsPrefix := $eksIdp.groupsPrefix | default "" }}
+{{- $eksIdpRequiredClaims := $eksIdp.requiredClaims | default dict }}
 
 # ==============================================================================
 # Auth integration (Zitadel OIDC App composition)
@@ -114,6 +141,20 @@
     "issuerURL" $authIssuerURL
     "zitadelProjectId" $authProjectId
     "oidcClient" $authOidc
+  )
+  "aws" (dict
+    "region" $awsRegion
+    "awsProviderConfigRef" $awsPCR
+    "eksIdentityProvider" (dict
+      "enabled" $eksIdpEnabled
+      "identityProviderConfigName" $eksIdpName
+      "eksClusterName" $eksIdpClusterName
+      "usernameClaim" $eksIdpUsernameClaim
+      "groupsClaim" $eksIdpGroupsClaim
+      "usernamePrefix" $eksIdpUsernamePrefix
+      "groupsPrefix" $eksIdpGroupsPrefix
+      "requiredClaims" $eksIdpRequiredClaims
+    )
   )
   "observed" (dict)
   "status" (dict)

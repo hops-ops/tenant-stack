@@ -1,0 +1,89 @@
+# code: language=yaml
+#
+# EKS IdentityProviderConfig
+# (`aws eks associate-identity-provider-config`)
+#
+# Tells the EKS apiserver to validate Bearer JWTs against the Zitadel
+# issuer URL — closes the loop for capsule-proxy. Without this MR, the
+# apiserver rejects tenant Bearer JWTs as unauthenticated even though
+# capsule-proxy has already extracted the username/groups.
+#
+# Uses the NAMESPACED variant of the provider-aws-eks MR
+# (`eks.aws.m.upbound.io/v1beta1`) — required because TenantStack is a
+# namespaced XR and Crossplane v2 forbids namespaced XRs from composing
+# cluster-scoped MRs. The cluster-scoped `eks.aws.upbound.io/v1beta2`
+# variant is NOT composable here.
+#
+# Composition gate (per feedback_crossplane_composition_gates):
+#   1. Requires spec.auth.enabled — the Zitadel Oidc Application MR
+#      emits the client_id that AWS validates the `aud` claim against.
+#   2. Requires the Oidc Application MR's connection secret to be
+#      populated (gate reads observed.resources["zitadel-oidc-app"]
+#      .connectionDetails["attribute.client_id"]). If not yet available,
+#      skip rendering — Crossplane retries on the next reconcile once
+#      the upstream MR finishes.
+#
+# Naming: AWS-side resource name pinned via crossplane.io/external-name
+# per upjet conventions — Crossplane v2's MR name-derivation is
+# decoupled from the external resource name.
+#
+
+{{- $aws := $state.aws }}
+{{- $idp := $aws.eksIdentityProvider }}
+{{- $auth := $state.auth }}
+
+{{- /*
+  Audience for the EKS IdP validation = the Zitadel Project ID.
+
+  Zitadel always includes the project_id in the JWT's `aud` claim
+  regardless of grant type:
+    - Interactive authorization_code:  aud = [client_id, project_id]
+    - Machine-user JWT-bearer:         aud = [project_id]
+  Using project_id as the EKS-registered clientId therefore supports
+  both flows uniformly — no composition gate on the OIDC App's
+  connection secret needed. (Earlier iterations read the OIDC App's
+  client_id out of connectionDetails, but that path only works for the
+  interactive flow because non-interactive tokens don't carry the OIDC
+  App client_id in aud.)
+*/ -}}
+{{- $clientId := $auth.zitadelProjectId }}
+
+{{- if and $idp.enabled $auth.enabled $clientId }}
+---
+apiVersion: eks.aws.m.upbound.io/v1beta1
+kind: IdentityProviderConfig
+metadata:
+  name: {{ $idp.identityProviderConfigName }}
+  annotations:
+    {{ setResourceNameAnnotation "eks-identity-provider" }}
+    # Pin the AWS-side resource name. EKS uses this as the unique ID
+    # within the cluster — idempotency depends on it.
+    crossplane.io/external-name: {{ $idp.identityProviderConfigName }}
+  labels: {{ $state.labels | toJson }}
+spec:
+  managementPolicies: {{ $state.managementPolicies | toJson }}
+  forProvider:
+    region: {{ $aws.region | quote }}
+    clusterName: {{ $idp.eksClusterName | quote }}
+    oidc:
+      clientId: {{ $clientId | quote }}
+      issuerUrl: {{ $auth.issuerURL | quote }}
+      usernameClaim: {{ $idp.usernameClaim | quote }}
+      groupsClaim: {{ $idp.groupsClaim | quote }}
+      {{- if $idp.usernamePrefix }}
+      usernamePrefix: {{ $idp.usernamePrefix | quote }}
+      {{- end }}
+      {{- if $idp.groupsPrefix }}
+      groupsPrefix: {{ $idp.groupsPrefix | quote }}
+      {{- end }}
+      {{- if gt (len $idp.requiredClaims) 0 }}
+      requiredClaims:
+        {{- toYaml $idp.requiredClaims | nindent 8 }}
+      {{- end }}
+    tags:
+      hops.ops.com.ai/managed: "true"
+      hops.ops.com.ai/tenantstack: {{ $state.name | quote }}
+  providerConfigRef:
+    name: {{ $aws.awsProviderConfigRef.name }}
+    kind: {{ $aws.awsProviderConfigRef.kind }}
+{{- end }}

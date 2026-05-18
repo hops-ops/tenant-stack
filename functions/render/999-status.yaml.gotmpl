@@ -22,3 +22,9 @@ status:
       name: {{ $state.status.auth.oidcClientSecretRef.name }}
       namespace: {{ $state.status.auth.oidcClientSecretRef.namespace }}
   {{- end }}
+  {{- if $state.aws.eksIdentityProvider.enabled }}
+  aws:
+    eksIdentityProvider:
+      ready: {{ $state.status.aws.eksIdentityProvider.ready }}
+      identityProviderConfigName: {{ $state.status.aws.eksIdentityProvider.identityProviderConfigName }}
+  {{- end }}

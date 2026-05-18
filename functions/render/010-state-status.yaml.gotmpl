@@ -9,7 +9,7 @@
 {{- $observed := $.observed.resources | default dict }}
 
 {{- $checkReady := dict }}
-{{- range $key := list "capsule" "namespace-capsule" "capsule-proxy" "zitadel-oidc-app" }}
+{{- range $key := list "capsule" "namespace-capsule" "capsule-proxy" "zitadel-oidc-app" "eks-identity-provider" }}
   {{- $entry := get $observed $key | default dict }}
   {{- $resource := $entry.resource | default dict }}
   {{- $status := $resource.status | default dict }}
@@ -27,6 +27,7 @@
   "namespaceCapsule" (dict "ready" (get $checkReady "namespace-capsule"))
   "capsuleProxy" (dict "ready" (get $checkReady "capsule-proxy"))
   "zitadelOidcApp" (dict "ready" (get $checkReady "zitadel-oidc-app"))
+  "eksIdentityProvider" (dict "ready" (get $checkReady "eks-identity-provider"))
 ) }}
 
 # Overall ready: every enabled component must be Ready. Mirrors the typed
@@ -40,6 +41,9 @@
 {{- end }}
 {{- if $state.auth.enabled }}
   {{- if not (get $checkReady "zitadel-oidc-app") }}{{- $overallReady = false }}{{- end }}
+{{- end }}
+{{- if $state.aws.eksIdentityProvider.enabled }}
+  {{- if not (get $checkReady "eks-identity-provider") }}{{- $overallReady = false }}{{- end }}
 {{- end }}
 
 {{- $state = set $state "status" (dict
@@ -55,6 +59,12 @@
     "oidcClientSecretRef" (dict
       "name" (printf "%s-oidc-client" $state.auth.oidcClient.name)
       "namespace" $state.namespace
+    )
+  )
+  "aws" (dict
+    "eksIdentityProvider" (dict
+      "ready" (get $checkReady "eks-identity-provider")
+      "identityProviderConfigName" $state.aws.eksIdentityProvider.identityProviderConfigName
     )
   )
 ) }}

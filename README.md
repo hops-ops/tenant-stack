@@ -172,17 +172,69 @@ kubectl config set-credentials tenant-user --exec-api-version=client.authenticat
 **capsule-proxy does NOT validate JWTs itself.** The Bearer token tenants
 present must be validated UPSTREAM by either:
 
-1. **The kube-apiserver's OIDC IdP association.** On EKS, configure via
-   `aws eks associate-identity-provider-config` pointing at the AuthStack
-   issuer. On vanilla k8s, set `--oidc-issuer-url`, `--oidc-client-id`,
-   `--oidc-username-claim`, `--oidc-groups-claim` on the apiserver.
+1. **The kube-apiserver's OIDC IdP association.** On EKS this is the
+   `IdentityProviderConfig` association — **TenantStack composes it for
+   you** via `spec.aws.eksIdentityProvider.enabled: true`. On vanilla
+   k8s, set `--oidc-issuer-url`, `--oidc-client-id`,
+   `--oidc-username-claim`, `--oidc-groups-claim` directly on the
+   apiserver.
 2. **An oauth2-proxy / authenticating Ingress in front of capsule-proxy.**
    The Ingress validates the JWT and passes through; capsule-proxy
    trusts the inbound header.
 
-Neither is composed by this stack — both are operator-managed external
-prerequisites. Without one of them, tenant kubectl calls reach
-capsule-proxy but the apiserver rejects them as unauthenticated.
+Without one of them, tenant kubectl calls reach capsule-proxy but the
+apiserver rejects them as unauthenticated.
+
+## EKS apiserver OIDC integration
+
+Set `spec.aws.eksIdentityProvider.enabled: true` and TenantStack
+composes an `eks.aws.upbound.io/v1beta2 IdentityProviderConfig` MR that
+runs `aws eks associate-identity-provider-config` for you. The MR is
+gated on the Zitadel `Oidc` Application's connection secret being
+populated — the issued `client_id` is what AWS validates the JWT's `aud`
+claim against.
+
+```yaml
+spec:
+  auth:
+    enabled: true
+    issuerURL: https://auth.ops.com.ai
+    zitadelProjectId: "316732890294485506"
+    oidcClient:
+      name: capsule-proxy
+      redirectUris: [http://localhost:8000, http://localhost:18000]
+  aws:
+    region: us-east-2
+    eksIdentityProvider:
+      enabled: true
+      identityProviderConfigName: zitadel
+      # eksClusterName defaults to spec.clusterName
+      # usernameClaim defaults to spec.capsule.proxy.usernameClaim
+      # groupsClaim defaults to "groups"
+      # usernamePrefix / groupsPrefix default empty (no namespacing)
+```
+
+After reconcile, the EKS apiserver will trust JWTs from the Zitadel
+issuer and map them via:
+
+| JWT claim | k8s identity |
+|---|---|
+| `usernameClaim` (default `preferred_username`) | k8s `user` for impersonation |
+| `groupsClaim` (default `groups`) | k8s `groups` for RBAC |
+
+**Important caveats:**
+
+- Adding an IdP association **takes ~10 minutes** on EKS — the apiserver
+  rotates. Plan migrations accordingly.
+- Removing one is **also slow** (~10 min); during removal, JWTs from
+  this issuer get rejected. Use `usernamePrefix: zitadel:` to namespace
+  the identities so you can phase out without disrupting other auth.
+- The IdP config is **cluster-wide** — each Tenant gets its own identity
+  via the Zitadel side (Org / User), not via separate IdP configs.
+- The provider-aws-eks `IdentityProviderConfig` MR is **cluster-scoped**
+  (not namespaced), so two TenantStacks targeting the same EKS cluster
+  with the same `identityProviderConfigName` will collide. Use distinct
+  `identityProviderConfigName` values per logical IdP per cluster.
 
 ### Prerequisites checklist
 
