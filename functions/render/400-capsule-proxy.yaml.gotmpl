@@ -35,6 +35,15 @@
 
 {{- $p := $state.capsule.proxy }}
 {{- if $p.enabled }}
+{{- $chartDefaults := dict
+  "replicaCount" $p.replicas
+  "options" (dict "oidcUsernameClaim" $p.usernameClaim)
+  "resources" (dict
+    "requests" (dict "cpu" "15m" "memory" "100Mi")
+    "limits" (dict "cpu" "100m" "memory" "256Mi")
+  )
+}}
+{{- $mergedValues := mergeOverwrite $chartDefaults ($p.values | default dict) }}
 ---
 apiVersion: helm.m.crossplane.io/v1beta1
 kind: Release
@@ -59,22 +68,7 @@ spec:
       {{- toYaml $p.overrideAllValues | nindent 6 }}
     {{- else }}
     values:
-      replicaCount: {{ $p.replicas }}
-      options:
-        oidcUsernameClaim: {{ $p.usernameClaim | quote }}
-        # The default `BearerToken,TLSCertificate` accepts JWT bearer
-        # tokens (the OIDC path) AND raw mTLS client certs (the
-        # break-glass-with-kubeconfig path). Leave as upstream default.
-      resources:
-        requests:
-          cpu: 100m
-          memory: 128Mi
-        limits:
-          cpu: 500m
-          memory: 256Mi
-      {{- if gt (len $p.values) 0 }}
-      {{- toYaml $p.values | nindent 6 }}
-      {{- end }}
+      {{- toYaml $mergedValues | nindent 6 }}
     {{- end }}
   rollbackLimit: 3
   providerConfigRef:
