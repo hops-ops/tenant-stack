@@ -15,9 +15,8 @@ spec:
       usernameClaim: preferred_username
   auth:
     enabled: true
-    # Copy from AuthStack status.oidc.issuerURL — surfaced in TenantStack
-    # status for tenant kubeconfig snippets. Does NOT directly drive the
-    # ProviderConfig (the PC reads creds from the pre-bootstrapped Secret).
+    # Copy from AuthStack status.oidc.issuerURL. TenantStack expects a
+    # separately-created Zitadel ProviderConfig named default.
     issuerURL: https://auth.ops.com.ai
     # Pre-existing Zitadel Project ID (capture from the Zitadel UI or via
     # `curl POST $issuerURL/management/v1/projects` with the iam-admin PAT).

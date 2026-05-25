@@ -80,6 +80,6 @@ spec:
     name: {{ $a.oidcClient.name }}-oidc-client
 
   providerConfigRef:
-    name: zitadel-tenant-stack
-    kind: ProviderConfig
+    name: {{ $a.zitadelProviderConfigRef.name }}
+    kind: {{ $a.zitadelProviderConfigRef.kind }}
 {{- end }}

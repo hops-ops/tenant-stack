@@ -279,8 +279,8 @@ _items = [
                     }
                 }
             }
-            # The Oidc App + ProviderConfig render, but the EKS IdP MR
-            # does NOT because the gate requires a non-empty observed
+            # The Oidc App renders, but the EKS IdP MR does NOT because
+            # the gate requires a non-empty observed
             # connectionDetails["attribute.client_id"]. Asserting on
             # Zitadel resources keeps the test small; absence of the
             # IdentityProviderConfig is verified by it not appearing in
@@ -296,15 +296,12 @@ _items = [
     }
 
     # ==========================================================================
-    # Test 8: auth.enabled composes Zitadel ProviderConfig + Oidc App MR.
-    # The credentials Secret is operator-managed (pre-bootstrapped on the
-    # Crossplane cluster) — TenantStack does not auto-compose ESO sync
-    # because Crossplane provider-kubernetes Object MRs are bound to a
-    # single ProviderConfig context (no clean cross-cluster Secret copy
-    # primitive). See README "Auth integration" for the bootstrap step.
+    # Test 8: auth.enabled composes the Zitadel Oidc App MR.
+    # The Zitadel ProviderConfig is created separately in the Crossplane
+    # cluster namespace and referenced by name here.
     # ==========================================================================
     metav1alpha1.CompositionTest {
-        metadata.name = "auth-enabled-composes-pc-and-oidc-app"
+        metadata.name = "auth-enabled-composes-oidc-app"
         spec = {
             compositionPath = "apis/tenantstacks/composition.yaml"
             xrdPath = "apis/tenantstacks/definition.yaml"
@@ -328,19 +325,6 @@ _items = [
             }
             assertResources = [
                 {
-                    apiVersion = "zitadel.m.crossplane.io/v1beta1"
-                    kind = "ProviderConfig"
-                    metadata.name = "zitadel-tenant-stack"
-                    spec.credentials = {
-                        source = "Secret"
-                        secretRef = {
-                            name = "zitadel-credentials"
-                            namespace = "pat-local"
-                            key = "credentials"
-                        }
-                    }
-                }
-                {
                     apiVersion = "application.zitadel.m.crossplane.io/v1alpha1"
                     kind = "Oidc"
                     metadata.name = "capsule-proxy"
@@ -353,7 +337,47 @@ _items = [
                     }
                     spec.writeConnectionSecretToRef.name = "capsule-proxy-oidc-client"
                     spec.providerConfigRef = {
-                        name = "zitadel-tenant-stack"
+                        name = "default"
+                        kind = "ProviderConfig"
+                    }
+                }
+            ]
+        }
+    }
+
+    # ==========================================================================
+    # Test 9: auth.zitadelProviderConfigRef overrides the default ProviderConfig.
+    # ==========================================================================
+    metav1alpha1.CompositionTest {
+        metadata.name = "auth-zitadel-provider-config-ref-override"
+        spec = {
+            compositionPath = "apis/tenantstacks/composition.yaml"
+            xrdPath = "apis/tenantstacks/definition.yaml"
+            timeoutSeconds = 60
+            validate = False
+            xr = stacksv1alpha1.TenantStack {
+                metadata.name = "tenant"
+                metadata.namespace = "pat-local"
+                spec = {
+                    clusterName = "pat-local"
+                    auth = {
+                        enabled = True
+                        issuerURL = "https://auth.ops.com.ai"
+                        zitadelProjectId = "316732890294485506"
+                        zitadelProviderConfigRef = {
+                            name = "tenant-zitadel"
+                            kind = "ProviderConfig"
+                        }
+                    }
+                }
+            }
+            assertResources = [
+                {
+                    apiVersion = "application.zitadel.m.crossplane.io/v1alpha1"
+                    kind = "Oidc"
+                    metadata.name = "capsule-proxy"
+                    spec.providerConfigRef = {
+                        name = "tenant-zitadel"
                         kind = "ProviderConfig"
                     }
                 }

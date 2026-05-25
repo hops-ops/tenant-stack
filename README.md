@@ -30,12 +30,12 @@ separate iterations tracked under GitKB `tasks/tenant-stack-*`.
   namespaces the user owns as a Tenant. **capsule-proxy itself does NOT
   validate JWTs** — see "Auth integration" below.
 - **AuthStack integration** (optional, off by default) — when
-  `spec.auth.enabled: true`, TenantStack composes a namespaced Zitadel
-  `ProviderConfig` and a Zitadel `Oidc` Application MR for tenant
-  kubectl users (`kubectl oidc-login`). The OIDC client's `client_id`
-  lands in a Crossplane connection Secret tenants pull from to build
-  their kubeconfig. **Requires a one-time `zitadel-credentials` Secret
-  bootstrap** on the Crossplane cluster — see "Auth integration" below.
+  `spec.auth.enabled: true`, TenantStack composes a Zitadel `Oidc`
+  Application MR for tenant kubectl users (`kubectl oidc-login`). The
+  OIDC client's `client_id` lands in a Crossplane connection Secret
+  tenants pull from to build their kubeconfig. **Requires a
+  pre-existing Zitadel `ProviderConfig`** in the TenantStack namespace on
+  the Crossplane cluster. The default reference is `ProviderConfig/default`.
 
 ## What's NOT (yet) included
 
@@ -107,47 +107,29 @@ spec:
 
 When `spec.auth.enabled: true`, TenantStack composes:
 
-1. A namespaced Zitadel `ProviderConfig` (`zitadel-tenant-stack`) that
-   consumes a pre-bootstrapped credentials Secret named
-   `zitadel-credentials` (see Bootstrap below).
-2. A Zitadel `Oidc` Application MR provisioning the OIDC App in Zitadel
+1. A Zitadel `Oidc` Application MR provisioning the OIDC App in Zitadel
    under `spec.auth.zitadelProjectId`.
-3. Crossplane writes the issued `client_id` + `client_secret` to the
+2. Crossplane writes the issued `client_id` + `client_secret` to the
    Secret named in `status.auth.oidcClientSecretRef`.
 
-### Bootstrap: the `zitadel-credentials` Secret
+TenantStack expects a namespaced Zitadel `ProviderConfig` named
+`default` to already exist in the TenantStack namespace on the
+**Crossplane cluster**. Override `spec.auth.zitadelProviderConfigRef` when
+the ProviderConfig has a different name. The ProviderConfig and any
+credentials Secret it references are owned by platform bootstrap, not by
+TenantStack.
 
-The Zitadel provider's ProviderConfig needs a credentials JSON in a K8s
-Secret on the **Crossplane cluster** (the cluster running the Zitadel
-provider's controllers — `colima` in the hops-ops topology). The shape:
+If that separate ProviderConfig uses a credentials Secret, the JSON shape
+is:
 
 ```json
 { "access_token": "<iam-admin PAT>", "domain": "auth.ops.com.ai", "port": "443", "insecure": false }
 ```
 
-**Why TenantStack does NOT auto-compose this Secret**: AuthStack's
-iam-admin PAT Secret lives on the workload cluster; ESO (with AWS SM
-read access via IRSA) runs there. Crossplane runs on the control-plane
-cluster. Crossplane's provider-kubernetes Object MRs are bound to a
-single ProviderConfig context, so cross-cluster Secret sync requires
-either ESO on the control-plane cluster OR an out-of-band copy. Both
-are operator-managed concerns outside this stack's scope.
-
-The simplest bootstrap (one-time, per cluster):
-
-```sh
-# Pull the PAT off the workload cluster, strip trailing newline.
-PAT=$(kubectl --context pat-local get secret -n zitadel iam-admin-pat \
-  -o jsonpath='{.data.pat}' | base64 -d | tr -d '\n')
-
-# Build the credentials JSON.
-CREDS=$(printf '{"access_token":"%s","domain":"auth.ops.com.ai","port":"443","insecure":false}' "$PAT")
-
-# Drop the Secret on the control-plane cluster (where the Zitadel
-# provider's controllers run), in the same namespace as the TenantStack.
-kubectl --context colima create secret generic zitadel-credentials \
-  -n default --from-literal=credentials="$CREDS"
-```
+**Why TenantStack does NOT auto-compose this ProviderConfig**: AuthStack's
+iam-admin PAT Secret lives on the workload cluster; ESO runs there.
+Crossplane runs on the control-plane cluster. That cross-cluster
+bootstrap is a platform concern outside this stack's scope.
 
 After reconcile:
 
@@ -241,7 +223,7 @@ issuer and map them via:
 - [ ] AuthStack installed and Ready
 - [ ] AuthStack `status.oidc.issuerURL` known (copy into spec.auth.issuerURL)
 - [ ] A Zitadel Project exists for OIDC apps; capture its ID
-- [ ] `zitadel-credentials` Secret bootstrapped on the Crossplane cluster (see Bootstrap above)
+- [ ] `ProviderConfig/default` exists in the TenantStack namespace on the Crossplane cluster, or `spec.auth.zitadelProviderConfigRef` points at the one you created
 - [ ] kube-apiserver OIDC IdP association is wired (or oauth2-proxy is deployed)
 
 ## Standard usage

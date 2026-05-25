@@ -213,24 +213,19 @@ spec:
               auth:
                 description: |
                   Cross-stack AuthStack integration. When `enabled: true`,
-                  TenantStack composes a Zitadel ProviderConfig + Oidc
-                  Application MR for tenant kubectl users
-                  (`kubectl oidc-login`). The resulting client_id lands in a
+                  TenantStack composes a Zitadel Oidc Application MR for
+                  tenant kubectl users (`kubectl oidc-login`). The resulting
+                  client_id lands in a
                   Crossplane connection Secret tenants pull from to build
                   their kubeconfig.
 
                   Prerequisites:
                   1. AuthStack must be installed and Ready (this is what
                      publishes the OIDC issuer at spec.auth.issuerURL).
-                  2. A K8s Secret named `zitadel-credentials` must exist in
-                     the TenantStack's namespace ON THE CROSSPLANE CLUSTER
-                     (the cluster where the Zitadel provider's controllers
-                     run, not necessarily the workload cluster), containing
-                     a single key `credentials` with the provider creds JSON
-                     ({access_token, domain, port, insecure}). For the hops
-                     colima+pat-local topology run
-                     `hops auth zitadel-credentials sync` (or copy from
-                     AuthStack's iam-admin-pat Secret manually).
+                  2. The configured Zitadel ProviderConfig must already exist
+                     in the TenantStack namespace on the Crossplane cluster.
+                     TenantStack references it but does not create it. Defaults
+                     to `ProviderConfig/default`.
                   3. The Zitadel Project under which to provision OIDC apps
                      must already exist; capture its ID via the Zitadel
                      management API or UI and pass via spec.auth.zitadelProjectId.
@@ -253,6 +248,17 @@ spec:
                   zitadelProjectId:
                     description: Zitadel Project ID under which to provision the OIDC Application. Capture from the Zitadel UI ("Projects → <your project> → details"), or compose a Project MR out-of-band and pass its ID here. Required when auth.enabled.
                     type: string
+                  zitadelProviderConfigRef:
+                    description: Reference to the Zitadel ProviderConfig used to provision the OIDC Application. Defaults to ProviderConfig/default in the TenantStack namespace.
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      kind:
+                        type: string
+                        enum:
+                        - ProviderConfig
+                        - ClusterProviderConfig
                   oidcClient:
                     description: OIDC Application shape provisioned in Zitadel for tenant kubectl users (`kubectl oidc-login`).
                     type: object
