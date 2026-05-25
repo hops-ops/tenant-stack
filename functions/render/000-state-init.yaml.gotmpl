@@ -101,6 +101,11 @@
 {{- end }}
 {{- $authIssuerURL := $auth.issuerURL | default "" }}
 {{- $authProjectId := $auth.zitadelProjectId | default "" }}
+{{- $authZitadelPCR := $auth.zitadelProviderConfigRef | default dict }}
+{{- $authZitadelPCR = dict
+  "name" ($authZitadelPCR.name | default "default")
+  "kind" ($authZitadelPCR.kind | default "ProviderConfig")
+}}
 {{- $authOidc := $auth.oidcClient | default dict }}
 {{- $authOidc = dict
   "name" ($authOidc.name | default "capsule-proxy")
@@ -140,6 +145,7 @@
     "enabled" $authEnabled
     "issuerURL" $authIssuerURL
     "zitadelProjectId" $authProjectId
+    "zitadelProviderConfigRef" $authZitadelPCR
     "oidcClient" $authOidc
   )
   "aws" (dict
