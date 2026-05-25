@@ -36,6 +36,10 @@ _items = [
                             version = "0.12.4"
                         }
                         namespace = "capsule-system"
+                        values.manager.resources = {
+                            requests = {cpu = "23m", memory = "283Mi"}
+                            limits = {cpu = "100m", memory = "768Mi"}
+                        }
                     }
                 }
                 {
@@ -241,6 +245,10 @@ _items = [
                             version = "0.10.0"
                         }
                         namespace = "capsule-system"
+                        values.resources = {
+                            requests = {cpu = "15m", memory = "100Mi"}
+                            limits = {cpu = "100m", memory = "256Mi"}
+                        }
                     }
                 }
             ]
