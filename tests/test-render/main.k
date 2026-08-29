@@ -33,6 +33,7 @@ _items = [
                         chart = {
                             name = "capsule"
                             repository = "https://projectcapsule.github.io/charts"
+                            # renovate: datasource=helm depName=capsule registryUrl=https://projectcapsule.github.io/charts
                             version = "0.12.4"
                         }
                         namespace = "capsule-system"
@@ -242,6 +243,7 @@ _items = [
                         chart = {
                             name = "capsule-proxy"
                             repository = "oci://ghcr.io/projectcapsule/charts"
+                            # renovate: datasource=docker depName=projectcapsule/charts/capsule-proxy registryUrl=https://ghcr.io
                             version = "0.10.0"
                         }
                         namespace = "capsule-system"

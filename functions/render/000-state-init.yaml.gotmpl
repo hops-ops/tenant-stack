@@ -49,6 +49,7 @@
 {{- end }}
 {{- $cpNamespace := $cp.namespace | default "capsule-system" }}
 {{- $cpReleaseName := $cp.releaseName | default "capsule" }}
+# renovate: datasource=helm depName=capsule registryUrl=https://projectcapsule.github.io/charts
 {{- $cpChartVersion := $cp.chartVersion | default "0.12.4" }}
 
 # ==============================================================================
@@ -60,6 +61,7 @@
   {{- $cpProxyEnabled = $cpProxy.enabled }}
 {{- end }}
 {{- $cpProxyReleaseName := $cpProxy.releaseName | default "capsule-proxy" }}
+# renovate: datasource=docker depName=projectcapsule/charts/capsule-proxy registryUrl=https://ghcr.io
 {{- $cpProxyChartVersion := $cpProxy.chartVersion | default "0.10.0" }}
 {{- $cpProxyUsernameClaim := $cpProxy.usernameClaim | default "sub" }}
 {{- $cpProxyReplicas := $cpProxy.replicas | default 1 }}
