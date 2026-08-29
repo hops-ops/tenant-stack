@@ -244,7 +244,7 @@ _items = [
                             name = "capsule-proxy"
                             repository = "oci://ghcr.io/projectcapsule/charts"
                             # renovate: datasource=docker depName=projectcapsule/charts/capsule-proxy registryUrl=https://ghcr.io
-                            version = "0.10.0"
+                            version = "0.14.1"
                         }
                         namespace = "capsule-system"
                         values.resources = {
