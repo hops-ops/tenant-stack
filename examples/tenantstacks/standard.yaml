@@ -10,4 +10,5 @@ spec:
     environment: dev
   capsule:
     namespace: capsule-system
+    # renovate: datasource=helm depName=capsule registryUrl=https://projectcapsule.github.io/charts
     chartVersion: "0.12.4"
