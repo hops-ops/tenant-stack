@@ -34,7 +34,7 @@ _items = [
                             name = "capsule"
                             repository = "https://projectcapsule.github.io/charts"
                             # renovate: datasource=helm depName=capsule registryUrl=https://projectcapsule.github.io/charts
-                            version = "0.12.4"
+                            version = "0.14.4"
                         }
                         namespace = "capsule-system"
                         values.manager.resources = {
