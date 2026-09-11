@@ -62,7 +62,7 @@
 {{- end }}
 {{- $cpProxyReleaseName := $cpProxy.releaseName | default "capsule-proxy" }}
 # renovate: datasource=docker depName=projectcapsule/charts/capsule-proxy registryUrl=https://ghcr.io
-{{- $cpProxyChartVersion := $cpProxy.chartVersion | default "0.10.0" }}
+{{- $cpProxyChartVersion := $cpProxy.chartVersion | default "0.14.1" }}
 {{- $cpProxyUsernameClaim := $cpProxy.usernameClaim | default "sub" }}
 {{- $cpProxyReplicas := $cpProxy.replicas | default 1 }}
 
