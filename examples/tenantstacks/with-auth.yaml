@@ -10,7 +10,7 @@ spec:
   capsule:
     namespace: capsule-system
     # renovate: datasource=helm depName=capsule registryUrl=https://projectcapsule.github.io/charts
-    chartVersion: "0.14.5"
+    chartVersion: "0.14.6"
     proxy:
       enabled: true
       usernameClaim: preferred_username
